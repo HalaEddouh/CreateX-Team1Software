@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-
-final navigationService = NavigationService();
+import '../../services/navigationService.dart'; // singleton
+import '../../services/ble_service.dart'; // BLE code untouched
 
 class DebugPage extends StatefulWidget {
   const DebugPage({super.key});
@@ -9,13 +9,12 @@ class DebugPage extends StatefulWidget {
   State<DebugPage> createState() => _DebugPageState();
 }
 
-
 class _DebugPageState extends State<DebugPage> {
   // Placeholder status
   String bleStatus = "Disconnected";
 
-//sends information to the BLE device
-  void _sendInstruction(String command){
+  // sends information to the BLE device
+  void _sendInstruction(String command) {
     if (BLEService().isConnected) {
       BLEService().sendCommand(command);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -27,8 +26,8 @@ class _DebugPageState extends State<DebugPage> {
       );
     }
   }
-  
-  //connects to user's device
+
+  // connects to user's device
   Future<void> _connectAndNavigate() async {
     final device = BLEService().selectedDevice;
 
@@ -43,7 +42,7 @@ class _DebugPageState extends State<DebugPage> {
 
     if (connected) {
       setState(() => bleStatus = "Connected");
-      navigationService.navigateWithProcessing('/debug');
+      navigationService.navigateWithProcessing('/debug'); // uses singleton
     } else {
       setState(() => bleStatus = "Disconnected");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -65,30 +64,29 @@ class _DebugPageState extends State<DebugPage> {
                 leading: const Icon(Icons.bluetooth),
                 title: Text("Status: $bleStatus"),
                 trailing: ElevatedButton(
-                  onPressed: () { /* Add Scan logic */ },
+                  onPressed: () {
+                    // Add Scan logic if needed
+                  },
                   child: const Text("Connect"),
                 ),
               ),
             ),
             const Spacer(),
-            const Text("Manual Controls", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text("Manual Controls",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
-
             ElevatedButton(
-              onPressed: () => _sendInstruction("Vibration_1"),    
+              onPressed: () => _sendInstruction("Vibration_1"),
               child: const Text("Vibration 1"),
             ),
             const SizedBox(height: 16),
-
             ElevatedButton(
               onPressed: () => _sendInstruction("Vibration_2"),
               child: const Text("Vibration 2"),
             ),
             const SizedBox(height: 16),
-
             ElevatedButton(
               onPressed: () => _sendInstruction("Stop"),
-            
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
               ),
