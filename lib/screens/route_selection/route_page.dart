@@ -8,21 +8,60 @@ class RoutePage extends StatefulWidget {
 }
 
 class _RoutePageState extends State<RoutePage> {
+  final TextEditingController _startController = TextEditingController();
+  final TextEditingController _endController = TextEditingController();
+
+  @override
+  void dispose() {
+    _startController.dispose();
+    _endController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Select Route")),
-      body: Center(
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.map, size: 100, color: Colors.blue),
-            const SizedBox(height: 20),
-            const Text("Google Maps will go here"),
-            const SizedBox(height: 40),
+            TextField(
+              controller: _startController,
+              decoration: const InputDecoration(
+                labelText: 'Start Location',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _endController,
+              decoration: const InputDecoration(
+                labelText: 'End Location',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 32),
             ElevatedButton(
-              onPressed: () => Navigator.pushNamed(context, '/debug'),
-              child: const Text("Go to BLE Debug Screen"),
+              onPressed: () {
+                if (_startController.text.isEmpty || _endController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter both locations')),
+                  );
+                  return;
+                }
+
+                Navigator.pushNamed(
+                  context,
+                  '/navigation',
+                  arguments: {
+                    'start': _startController.text,
+                    'end': _endController.text,
+                  },
+                );
+              },
+              child: const Text("Start Navigation"),
             ),
           ],
         ),
