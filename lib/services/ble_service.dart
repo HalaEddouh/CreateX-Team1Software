@@ -47,11 +47,11 @@ class BLEService {
 
       List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
-        if (service.uuid.toString().toLowerCase() == "6e400001-b5a3-f393-e0a9-e50e24dcca9e") {
+        if (service.uuid.toString().toLowerCase() == nusServiceUuid) {
           for (var char in service.characteristics) {
             
             // App writes to TX to send commands to Arduino
-            if (char.uuid.toString().toLowerCase() == "6e400002-b5a3-f393-e0a9-e50e24dcca9e") {
+            if (char.uuid.toString().toLowerCase() == nusTxUuid) {
               _txCharacteristic = char;
             }
             
