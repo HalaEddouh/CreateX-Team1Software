@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../services/navigationService.dart'; // singleton
-import '../../services/ble_service.dart'; // BLE code untouched
+import '../../services/ble_service.dart';
 
 class DebugPage extends StatefulWidget {
   const DebugPage({super.key});
@@ -10,25 +9,27 @@ class DebugPage extends StatefulWidget {
 }
 
 class _DebugPageState extends State<DebugPage> {
-  // Placeholder status
   String bleStatus = "Disconnected";
 
-  // sends information to the BLE device
+  // List of required button values
+  final List<String> commands = [
+    "1", "2", "3", "4", "5", "sweep", "stop", "help", "e50"
+  ];
+
   void _sendInstruction(String command) {
     if (BLEService().isConnected) {
       BLEService().sendCommand(command);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Sent: $command")),
+        SnackBar(content: Text("Sent: $command"), duration: const Duration(seconds: 1)),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Connect device.")),
+        const SnackBar(content: Text("Connect device first.")),
       );
     }
   }
 
-  // connects to user's device
-  Future<void> _connectAndNavigate() async {
+  Future<void> _handleConnect() async {
     final device = BLEService().selectedDevice;
 
     if (device == null) {
@@ -39,12 +40,11 @@ class _DebugPageState extends State<DebugPage> {
     }
 
     bool connected = await BLEService().connectToDevice(device);
+    setState(() {
+      bleStatus = connected ? "Connected" : "Disconnected";
+    });
 
-    if (connected) {
-      setState(() => bleStatus = "Connected");
-      navigationService.navigateWithProcessing('/debug'); // uses singleton
-    } else {
-      setState(() => bleStatus = "Disconnected");
+    if (!connected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Failed to connect")),
       );
@@ -61,36 +61,41 @@ class _DebugPageState extends State<DebugPage> {
           children: [
             Card(
               child: ListTile(
-                leading: const Icon(Icons.bluetooth),
+                leading: Icon(
+                  Icons.bluetooth,
+                  color: bleStatus == "Connected" ? Colors.blue : Colors.grey,
+                ),
                 title: Text("Status: $bleStatus"),
                 trailing: ElevatedButton(
-                  onPressed: () {
-                    // Add Scan logic if needed
-                  },
+                  onPressed: _handleConnect,
                   child: const Text("Connect"),
                 ),
               ),
             ),
-            const Spacer(),
-            const Text("Manual Controls",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 30),
+            const Text(
+              "Manual Controls",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _sendInstruction("Vibration_1"),
-              child: const Text("Vibration 1"),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => _sendInstruction("Vibration_2"),
-              child: const Text("Vibration 2"),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => _sendInstruction("Stop"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-              ),
-              child: const Text("Stop"),
+            // Wrap allows buttons to flow to the next line automatically
+            Wrap(
+              spacing: 12, // horizontal gap
+              runSpacing: 12, // vertical gap
+              alignment: WrapAlignment.center,
+              children: commands.map((cmd) {
+                return SizedBox(
+                  width: 100, // Fixed width for a uniform grid look
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cmd == "stop" ? Colors.red.shade400 : null,
+                      foregroundColor: cmd == "stop" ? Colors.white : null,
+                    ),
+                    onPressed: () => _sendInstruction(cmd),
+                    child: Text(cmd.toUpperCase()),
+                  ),
+                );
+              }).toList(),
             ),
             const Spacer(),
           ],
