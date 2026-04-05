@@ -29,8 +29,6 @@ class MyApp extends StatelessWidget {
       routes: {
         '/': (context) => const HomePage(),
         '/ble': (context) => const DebugPage(),
-
-        // ✅ SINGLE SOURCE OF TRUTH NOW
         '/navigation': (context) => const RoutePage(),
       },
     );
@@ -61,8 +59,8 @@ class HomePage extends StatelessWidget {
             ElevatedButton(
               child: const Text("Start Navigation"),
               onPressed: () {
-                Navigator.pushNamed(context, '/navigation');
-              },
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const RoutePage()),
+                );              },
             ),
           ],
         ),
