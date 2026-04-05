@@ -31,12 +31,14 @@ class BLEService {
     if (FlutterBluePlus.isScanningNow == false) {
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 15),
-        withKeywords: ["LRA-BLE"], // Optional: filters for your device name
+        // withKeywords: ["LRA-BLE"], // Optional: filters for your device name
       );
     }
   }
 
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
+
+  Stream<BluetoothAdapterState> get adapterState => FlutterBluePlus.adapterState;
 
   // --- 2. CONNECTION ---
 
@@ -44,17 +46,17 @@ class BLEService {
     try {
       await device.connect();
       _connectedDevice = device;
+      _txCharacteristic = null; // Reset before discovery
 
       List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
         if (service.uuid.toString().toLowerCase() == nusServiceUuid) {
           for (var char in service.characteristics) {
-            
             // App writes to TX to send commands to Arduino
             if (char.uuid.toString().toLowerCase() == nusTxUuid) {
               _txCharacteristic = char;
             }
-            
+
             // App listens to RX to receive "Played effect..." messages
             if (char.uuid.toString().toLowerCase() == nusRxUuid) {
               await char.setNotifyValue(true);
@@ -66,9 +68,19 @@ class BLEService {
           }
         }
       }
-      return true;
+
+      // If the required characteristic was not found, this is a failure.
+      if (_txCharacteristic == null) {
+        await device.disconnect();
+        _connectedDevice = null;
+        return false;
+      }
+
+      return true; // Success!
     } catch (e) {
       print("Connection Error: $e");
+      _connectedDevice = null;
+      _txCharacteristic = null;
       return false;
     }
   }
