@@ -14,29 +14,38 @@ class DebugPage extends StatefulWidget {
 
 class _DebugPageState extends State<DebugPage> {
   final BLEService _bleService = BLEService();
-  BluetoothDevice? _selectedDevice;
-  StreamSubscription? _connectionStateSubscription;
-  String _bleStatus = "Disconnected";
 
-  // List of required button values
   final List<String> commands = [
     "1", "2", "3", "4", "5", "sweep", "stop", "help", "e50"
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Listen to value notifiers to rebuild the widget on change
+    _bleService.selectedDeviceNotifier.addListener(_rebuild);
+    _bleService.connectionStatusNotifier.addListener(_rebuild);
+  }
+
+  @override
   void dispose() {
-    _connectionStateSubscription?.cancel();
+    _bleService.selectedDeviceNotifier.removeListener(_rebuild);
+    _bleService.connectionStatusNotifier.removeListener(_rebuild);
     super.dispose();
   }
 
+  void _rebuild() {
+    setState(() {});
+  }
+
   void _sendInstruction(String command) {
-    // Check connection status via the property in BLEService
     if (_bleService.isConnected) {
       _bleService.sendCommand(command);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text("Sent: $command"),
-            duration: const Duration(seconds: 1)),
+          content: Text("Sent: $command"),
+          duration: const Duration(seconds: 1),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -46,45 +55,20 @@ class _DebugPageState extends State<DebugPage> {
   }
 
   Future<void> _handleConnect() async {
-    if (_selectedDevice == null) {
+    if (_bleService.selectedDeviceNotifier.value == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No device selected. Please scan first.")),
       );
       return;
     }
+    await _bleService.connectToDevice(_bleService.selectedDeviceNotifier.value!);
+  }
 
-    setState(() {
-      _bleStatus = "Connecting...";
-    });
-
-    bool connected = await _bleService.connectToDevice(_selectedDevice!);
-
-    if (mounted) {
-      setState(() {
-        _bleStatus = connected ? "Connected" : "Failed to connect";
-      });
-
-      if (connected) {
-        // Cancel any previous subscription
-        _connectionStateSubscription?.cancel();
-        _connectionStateSubscription =
-            _selectedDevice!.connectionState.listen((state) {
-          if (state == BluetoothConnectionState.disconnected && mounted) {
-            setState(() {
-              _bleStatus = "Disconnected";
-            });
-          }
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Failed to connect")),
-        );
-      }
-    }
+  Future<void> _handleDisconnect() async {
+    await _bleService.disconnect();
   }
 
   Future<void> _scanForDevices() async {
-    // Request necessary permissions
     if (Platform.isAndroid) {
       await [
         Permission.location,
@@ -92,19 +76,15 @@ class _DebugPageState extends State<DebugPage> {
         Permission.bluetoothConnect,
       ].request();
     } else if (Platform.isIOS) {
-      await [
-        Permission.bluetooth,
-      ].request();
+      await Permission.bluetooth.request();
     }
 
-
-    // First, check if bluetooth is on
     final adapterState = await _bleService.adapterState.first;
     if (adapterState != BluetoothAdapterState.on) {
-      if(mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Bluetooth is off or permissions are denied. Please enable it to scan.'),
+            content: Text('Bluetooth is off. Please enable it to scan.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -112,7 +92,6 @@ class _DebugPageState extends State<DebugPage> {
       return;
     }
 
-    // Stop any active scan before starting a new one
     await FlutterBluePlus.stopScan();
     await _bleService.startScan();
 
@@ -127,7 +106,9 @@ class _DebugPageState extends State<DebugPage> {
               if (snapshot.hasError) {
                 return Center(child: Text("Error: ${snapshot.error}"));
               }
-              if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData || snapshot.data!.isEmpty) {
+              if (snapshot.connectionState == ConnectionState.waiting ||
+                  !snapshot.hasData ||
+                  snapshot.data!.isEmpty) {
                 return const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -147,7 +128,6 @@ class _DebugPageState extends State<DebugPage> {
                   itemCount: snapshot.data!.length,
                   itemBuilder: (context, index) {
                     final result = snapshot.data![index];
-                    // Filtering out unnamed devices
                     if (result.device.platformName.isNotEmpty) {
                       return ListTile(
                         title: Text(result.device.platformName),
@@ -171,21 +151,17 @@ class _DebugPageState extends State<DebugPage> {
       },
     );
 
-    // Stop scanning once dialog is closed
     await FlutterBluePlus.stopScan();
-
     if (selected != null) {
       _bleService.setSelectedDevice(selected);
-      setState(() {
-        _selectedDevice = selected;
-        // Reset status when a new device is selected
-        _bleStatus = "Disconnected";
-      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final selectedDevice = _bleService.selectedDeviceNotifier.value;
+    final connectionStatus = _bleService.connectionStatusNotifier.value;
+
     return Scaffold(
       appBar: AppBar(title: const Text("BLE Debug Console")),
       body: Padding(
@@ -202,12 +178,12 @@ class _DebugPageState extends State<DebugPage> {
                     ListTile(
                       leading: Icon(
                         Icons.bluetooth,
-                        color: _bleStatus == "Connected"
+                        color: connectionStatus == "Connected"
                             ? Colors.blue
                             : Colors.grey,
                       ),
-                      title: Text("Status: $_bleStatus"),
-                      subtitle: Text(_selectedDevice?.platformName ?? "No device selected"),
+                      title: Text("Status: $connectionStatus"),
+                      subtitle: Text(selectedDevice?.platformName ?? "No device selected"),
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -217,16 +193,27 @@ class _DebugPageState extends State<DebugPage> {
                           child: const Text("Scan"),
                         ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _bleStatus == "Connecting..." ? null : _handleConnect,
-                          child: _bleStatus == "Connecting..."
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Text("Connect"),
-                        ),
+                        if (connectionStatus != "Connected")
+                          ElevatedButton(
+                            onPressed: connectionStatus == "Connecting..."
+                                ? null
+                                : _handleConnect,
+                            child: connectionStatus == "Connecting..."
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text("Connect"),
+                          )
+                        else
+                          ElevatedButton(
+                            onPressed: _handleDisconnect,
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red),
+                            child: const Text("Disconnect"),
+                          ),
                       ],
                     ),
                   ],
