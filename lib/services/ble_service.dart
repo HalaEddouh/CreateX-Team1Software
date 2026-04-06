@@ -98,7 +98,7 @@ class BLEService {
     try {
       // utf8.encode converts string to the List<int> BLE requires
       await _txCharacteristic!.write(
-        utf8.encode("$command\n"),
+        utf8.encode("$command"),
         withoutResponse: false, 
       );
       print("Sent command: $command");
