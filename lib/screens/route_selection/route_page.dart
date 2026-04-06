@@ -1,11 +1,24 @@
 import 'dart:convert';
 import 'dart:async';
+import '../../services/ble_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 
 import '../../widgets/ble_connection_widget.dart';
+
+class NavigationStep {
+  final String instruction;
+  final LatLng location;
+  final String maneuver; // e.g., "turn-left", "turn-right", "straight"
+
+  NavigationStep({
+    required this.instruction,
+    required this.location,
+    required this.maneuver,
+  });
+}
 
 class RoutePage extends StatefulWidget {
   const RoutePage({super.key});
@@ -23,7 +36,9 @@ class _RoutePageState extends State<RoutePage> {
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
 
-  List<String> _directions = [];
+  List<NavigationStep> _navigationSteps = [];
+
+  final BLEService _bleService = BLEService();
 
   StreamSubscription<Position>? _positionStream;
 
@@ -74,10 +89,6 @@ class _RoutePageState extends State<RoutePage> {
     ).listen((Position pos) {
       final newPos = LatLng(pos.latitude, pos.longitude);
 
-      setState(() {
-        _currentLocation = newPos;
-      });
-
       _checkStepProgress(newPos);
 
       _controller?.animateCamera(
@@ -87,29 +98,58 @@ class _RoutePageState extends State<RoutePage> {
   }
 
   void _checkStepProgress(LatLng userLocation) {
-    if (_directions.isEmpty) return;
+    if (_navigationSteps.isEmpty ||
+        _currentStepIndex >= _navigationSteps.length) {
+      return;
+    }
 
-    final routePoints = _polylines.isNotEmpty
-        ? _polylines.first.points
-        : <LatLng>[];
-
-    if (_currentStepIndex >= routePoints.length) return;
-
-    final target = routePoints[_currentStepIndex];
+    final currentStep = _navigationSteps[_currentStepIndex];
+    final targetLocation = currentStep.location;
 
     final distance = Geolocator.distanceBetween(
       userLocation.latitude,
       userLocation.longitude,
-      target.latitude,
-      target.longitude,
+      targetLocation.latitude,
+      targetLocation.longitude,
     );
 
-    if (distance < 15) {
-      _currentStepIndex++;
+    String? commandToSend;
 
-      if (_currentStepIndex < _directions.length) {
+    // Determine command based on maneuver and distance
+    if (distance < 10) {
+      // Closest
+      switch (currentStep.maneuver) {
+        case 'turn-left':
+          commandToSend = '1'; // Command for sharp left
+          break;
+        case 'turn-right':
+          commandToSend = '2'; // Command for sharp right
+          break;
+      }
+    } else if (distance < 25) {
+      // Approaching
+      switch (currentStep.maneuver) {
+        case 'turn-left':
+          commandToSend = '3'; // Command for incoming left
+          break;
+        case 'turn-right':
+          commandToSend = '4'; // Command for incoming right
+          break;
+      }
+    }
+
+    // Send the command via BLE
+    if (commandToSend != null && _bleService.isConnected) {
+      _bleService.sendCommand(commandToSend);
+    }
+
+    // Logic to advance to the next step
+    if (distance < 15) {
+      // Threshold to move to next instruction
+      _currentStepIndex++;
+      if (_currentStepIndex < _navigationSteps.length) {
         setState(() {
-          _nextInstruction = _directions[_currentStepIndex];
+          _nextInstruction = _navigationSteps[_currentStepIndex].instruction;
         });
       } else {
         setState(() {
@@ -162,21 +202,33 @@ class _RoutePageState extends State<RoutePage> {
     final encoded = data['routes'][0]['overview_polyline']['points'];
     final routePoints = _decodePolyline(encoded);
 
-    final steps = data['routes'][0]['legs'][0]['steps'];
-    _directions = [];
+    final route = data['routes'][0]['legs'][0];
+    final steps = route['steps'];
+
+    // Clear previous route data
+    _navigationSteps = [];
 
     for (var step in steps) {
-      final instruction = step['html_instructions']
-          .replaceAll(RegExp(r'<[^>]*>'), '');
-      final distance = step['distance']['text'];
-      _directions.add("$instruction ($distance)");
+      final instruction =
+          step['html_instructions'].replaceAll(RegExp(r'<[^>]*>'), '');
+
+      final location = step['end_location'];
+      final maneuver =
+          step['maneuver'] ?? 'straight'; // Default to 'straight' if no maneuver
+
+      _navigationSteps.add(NavigationStep(
+        instruction: instruction,
+        location: LatLng(location['lat'], location['lng']),
+        maneuver: maneuver,
+      ));
     }
 
     setState(() {
       _markers.clear();
       _polylines.clear();
       _currentStepIndex = 0;
-      _nextInstruction = _directions.isNotEmpty ? _directions[0] : "";
+      _nextInstruction =
+          _navigationSteps.isNotEmpty ? _navigationSteps[0].instruction : "";
 
       _markers.add(Marker(
         markerId: const MarkerId("start"),
@@ -304,11 +356,11 @@ class _RoutePageState extends State<RoutePage> {
           Expanded(
             flex: 2,
             child: ListView.builder(
-              itemCount: _directions.length,
+              itemCount: _navigationSteps.length,
               itemBuilder: (context, index) {
                 return ListTile(
                   leading: Text("${index + 1}"),
-                  title: Text(_directions[index]),
+                  title: Text(_navigationSteps[index].instruction),
                 );
               },
             ),
