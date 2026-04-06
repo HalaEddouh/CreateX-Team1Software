@@ -5,6 +5,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 
+import '../../widgets/ble_connection_widget.dart';
+
 class RoutePage extends StatefulWidget {
   const RoutePage({super.key});
 
@@ -240,6 +242,10 @@ class _RoutePageState extends State<RoutePage> {
 
       body: Column(
         children: [
+          const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: BLEConnectionWidget(),
+          ),
           // 🔔 LIVE INSTRUCTION BAR
           if (_nextInstruction.isNotEmpty)
             Container(
