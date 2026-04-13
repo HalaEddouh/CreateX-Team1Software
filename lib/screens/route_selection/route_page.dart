@@ -48,6 +48,10 @@ class _RoutePageState extends State<RoutePage> {
 
   String _nextInstruction = "";
 
+  String? _activeCommand;
+
+  int distanceToStep = 0;
+
   static const CameraPosition _initialPosition =
       CameraPosition(target: LatLng(33.7490, -84.3880), zoom: 12);
 
@@ -113,6 +117,12 @@ class _RoutePageState extends State<RoutePage> {
       targetLocation.longitude,
     );
 
+    distanceToStep = distance.toInt();
+
+    // Debug prints to reveal the coordinate mismatch
+    print("Device Location: ${userLocation.latitude}, ${userLocation.longitude}");
+    print("Route Target: ${targetLocation.latitude}, ${targetLocation.longitude}");
+
     String? commandToSend;
 
     // Determine command based on maneuver and distance
@@ -143,9 +153,15 @@ class _RoutePageState extends State<RoutePage> {
       _bleService.sendCommand(commandToSend);
     }
 
+    if (_activeCommand != commandToSend) {
+      setState(() {
+        _activeCommand = commandToSend;
+      });
+    }
+
     // Logic to advance to the next step
-    if (distance < 15) {
-      // Threshold to move to next instruction
+    if (distance < 5) {
+      // Threshold to move to next instruction (must be less than the 10m threshold above)
       _currentStepIndex++;
       if (_currentStepIndex < _navigationSteps.length) {
         setState(() {
@@ -227,6 +243,7 @@ class _RoutePageState extends State<RoutePage> {
       _markers.clear();
       _polylines.clear();
       _currentStepIndex = 0;
+      _activeCommand = null;
       _nextInstruction =
           _navigationSteps.isNotEmpty ? _navigationSteps[0].instruction : "";
 
@@ -342,13 +359,46 @@ class _RoutePageState extends State<RoutePage> {
           // MAP
           Expanded(
             flex: 3,
-            child: GoogleMap(
-              initialCameraPosition: _initialPosition,
-              onMapCreated: (c) => _controller = c,
-              markers: _markers,
-              polylines: _polylines,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
+            child: Stack(
+              children: [
+                GoogleMap(
+                  initialCameraPosition: _initialPosition,
+                  onMapCreated: (c) => _controller = c,
+                  markers: _markers,
+                  polylines: _polylines,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                ),
+                // 🛠 BLE COMMAND DEBUG WIDGET
+                Positioned(
+                  bottom: 16,
+                  left: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _activeCommand != null ? Colors.orange : Colors.grey,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.bluetooth_audio, size: 18, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Text(
+                          "BLE Command: ${_activeCommand ?? 'None'} | Distance: ${distanceToStep}m`",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                  
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 
