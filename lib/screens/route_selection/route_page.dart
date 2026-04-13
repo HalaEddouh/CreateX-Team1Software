@@ -30,7 +30,6 @@ class RoutePage extends StatefulWidget {
 class _RoutePageState extends State<RoutePage> {
   GoogleMapController? _controller;
 
-  final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
 
   final Set<Marker> _markers = {};
@@ -57,7 +56,6 @@ class _RoutePageState extends State<RoutePage> {
 
   @override
   void dispose() {
-    _startController.dispose();
     _endController.dispose();
     _positionStream?.cancel();
     super.dispose();
@@ -176,22 +174,34 @@ class _RoutePageState extends State<RoutePage> {
   }
 
   Future<void> _getRoute() async {
-    final start = _startController.text;
     final end = _endController.text;
 
-    if (start.isEmpty || end.isEmpty) {
+    if (end.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Enter both locations")),
+        const SnackBar(content: Text("Enter a destination")),
       );
       return;
     }
 
-    final startLatLng = await _geocode(start);
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Location permission is required to calculate the route")),
+      );
+      return;
+    }
+
+    final currentPosition = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    final startLatLng = LatLng(currentPosition.latitude, currentPosition.longitude);
     final endLatLng = await _geocode(end);
 
-    if (startLatLng == null || endLatLng == null) {
+    if (endLatLng == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not find one of the locations")),
+        const SnackBar(content: Text("Could not find the destination location")),
       );
       return;
     }
@@ -333,17 +343,9 @@ class _RoutePageState extends State<RoutePage> {
             child: Column(
               children: [
                 TextField(
-                  controller: _startController,
-                  decoration: const InputDecoration(
-                    labelText: "Start Location",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
                   controller: _endController,
                   decoration: const InputDecoration(
-                    labelText: "End Location",
+                    labelText: "Destination",
                     border: OutlineInputBorder(),
                   ),
                 ),
