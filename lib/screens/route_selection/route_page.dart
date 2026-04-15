@@ -47,9 +47,13 @@ class _RoutePageState extends State<RoutePage> {
 
   String _nextInstruction = "";
 
-  String? _activeCommand;
+  String _activeCommand = "";
 
   int distanceToStep = 0;
+
+  Timer? _commandTimer;
+
+  bool _isCommandSent = false;
 
   static const CameraPosition _initialPosition =
       CameraPosition(target: LatLng(33.7490, -84.3880), zoom: 12);
@@ -58,6 +62,7 @@ class _RoutePageState extends State<RoutePage> {
   void dispose() {
     _endController.dispose();
     _positionStream?.cancel();
+    _commandTimer?.cancel();
     super.dispose();
   }
 
@@ -97,6 +102,12 @@ class _RoutePageState extends State<RoutePage> {
         CameraUpdate.newLatLng(newPos),
       );
     });
+
+    // Run _sendCommand periodically, e.g., every 1 second.
+    _commandTimer?.cancel();
+    _commandTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _sendCommand();
+    });
   }
 
   void _checkStepProgress(LatLng userLocation) {
@@ -121,55 +132,80 @@ class _RoutePageState extends State<RoutePage> {
     print("Device Location: ${userLocation.latitude}, ${userLocation.longitude}");
     print("Route Target: ${targetLocation.latitude}, ${targetLocation.longitude}");
 
-    String? commandToSend;
+    String commandToSend;
+
+    // 1. Find the maneuver for the UPCOMING intersection (which is the next step's maneuver)
+    String upcomingManeuver = 'straight';
+    if (_currentStepIndex + 1 < _navigationSteps.length) {
+      upcomingManeuver = _navigationSteps[_currentStepIndex + 1].maneuver;
+    } else {
+      upcomingManeuver = 'arrived';
+    }
 
     // Determine command based on maneuver and distance
-    if (distance < 10) {
+    if (distance < 25) {
       // Closest
-      switch (currentStep.maneuver) {
-        case 'turn-left':
-          commandToSend = '1'; // Command for sharp left
-          break;
-        case 'turn-right':
-          commandToSend = '2'; // Command for sharp right
-          break;
+      if (upcomingManeuver.contains('left')) {
+        commandToSend = '1'; // Command for sharp left
+      } else if (upcomingManeuver.contains('right')) {
+        commandToSend = '2'; // Command for sharp right
+      } else {
+        commandToSend = '3'; // Command for straight or other maneuver
       }
-    } else if (distance < 25) {
+    } else if (distance < 50) {
       // Approaching
-      switch (currentStep.maneuver) {
-        case 'turn-left':
-          commandToSend = '3'; // Command for incoming left
-          break;
-        case 'turn-right':
-          commandToSend = '4'; // Command for incoming right
-          break;
+      if (upcomingManeuver.contains('left')) {
+        commandToSend = '1'; // Command for incoming left
+      } else if (upcomingManeuver.contains('right')) {
+        commandToSend = '2'; // Command for incoming right
+      } else {
+        commandToSend = '3'; // Command for approaching straight or other maneuver
       }
+    } else {
+      commandToSend = '0';
     }
 
-    // Send the command via BLE
-    if (commandToSend != null && _bleService.isConnected) {
-      _bleService.sendCommand(commandToSend);
-    }
+    setState(() {
+      _activeCommand = commandToSend;
+    });
 
-    if (_activeCommand != commandToSend) {
-      setState(() {
-        _activeCommand = commandToSend;
-      });
-    }
 
     // Logic to advance to the next step
-    if (distance < 5) {
-      // Threshold to move to next instruction (must be less than the 10m threshold above)
+    if (distance < 15) {
+      // Threshold to move to next instruction (must be less than the 25m threshold above)
       _currentStepIndex++;
       if (_currentStepIndex < _navigationSteps.length) {
         setState(() {
-          _nextInstruction = _navigationSteps[_currentStepIndex].instruction;
+          // 2. UI logic: Show the user what is coming up next
+          if (_currentStepIndex + 1 < _navigationSteps.length) {
+            _nextInstruction = "Next: ${_navigationSteps[_currentStepIndex + 1].instruction}";
+          } else {
+            _nextInstruction = "Next: Arrive at destination";
+          }
         });
       } else {
         setState(() {
           _nextInstruction = "You have arrived 🎉";
         });
+        _commandTimer?.cancel();
       }
+    }
+  }
+
+  Future<void> _sendCommand() async {
+        // Send the command via BLE
+    if (_activeCommand.isNotEmpty && _bleService.isConnected) {
+      _bleService.sendCommand(_activeCommand);
+      
+      setState(() {
+        _isCommandSent = true;
+      });
+      // Briefly flash the icon green for 300 milliseconds
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() => _isCommandSent = false);
+        }
+      });
     }
   }
 
@@ -253,9 +289,10 @@ class _RoutePageState extends State<RoutePage> {
       _markers.clear();
       _polylines.clear();
       _currentStepIndex = 0;
-      _activeCommand = null;
-      _nextInstruction =
-          _navigationSteps.isNotEmpty ? _navigationSteps[0].instruction : "";
+      _activeCommand = "";
+      _nextInstruction = _navigationSteps.length > 1
+          ? "Next: ${_navigationSteps[1].instruction}"
+          : (_navigationSteps.isNotEmpty ? _navigationSteps[0].instruction : "");
 
       _markers.add(Marker(
         markerId: const MarkerId("start"),
@@ -378,7 +415,7 @@ class _RoutePageState extends State<RoutePage> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: _activeCommand != null ? Colors.orange : Colors.grey,
+                      color: _activeCommand.isNotEmpty ? Colors.orange : Colors.grey,
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
                     ),
@@ -388,13 +425,18 @@ class _RoutePageState extends State<RoutePage> {
                         const Icon(Icons.bluetooth_audio, size: 18, color: Colors.white),
                         const SizedBox(width: 8),
                         Text(
-                          "BLE Command: ${_activeCommand ?? 'None'} | Distance: ${distanceToStep}m`",
+                          "BLE Command: ${_activeCommand.isEmpty ? 'None' : _activeCommand} | Distance: ${distanceToStep}m",
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
-                  
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.circle,
+                          size: 14,
+                          color: _isCommandSent ? Colors.greenAccent : Colors.white30,
                         ),
                       ],
                     ),
