@@ -91,7 +91,7 @@ class _RoutePageState extends State<RoutePage> {
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
+        distanceFilter: 1,
       ),
     ).listen((Position pos) {
       final newPos = LatLng(pos.latitude, pos.longitude);
@@ -143,24 +143,15 @@ class _RoutePageState extends State<RoutePage> {
     }
 
     // Determine command based on maneuver and distance
-    if (distance < 25) {
+    if (distance < 15) {
       // Closest
-      if (upcomingManeuver.contains('left')) {
-        commandToSend = '1'; // Command for sharp left
-      } else if (upcomingManeuver.contains('right')) {
-        commandToSend = '2'; // Command for sharp right
-      } else {
-        commandToSend = '3'; // Command for straight or other maneuver
-      }
+      commandToSend = 'a127';
+    } else if (distance < 25) {
+      // Closesr
+      commandToSend = 'a30';
     } else if (distance < 50) {
       // Approaching
-      if (upcomingManeuver.contains('left')) {
-        commandToSend = '1'; // Command for incoming left
-      } else if (upcomingManeuver.contains('right')) {
-        commandToSend = '2'; // Command for incoming right
-      } else {
-        commandToSend = '3'; // Command for approaching straight or other maneuver
-      }
+      commandToSend = 'a10';
     } else {
       commandToSend = '0';
     }
