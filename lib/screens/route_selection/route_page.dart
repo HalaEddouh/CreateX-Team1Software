@@ -1,24 +1,11 @@
-import 'dart:convert';
 import 'dart:async';
 import '../../services/ble_service.dart';
+import '../../services/route_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 
 import '../../widgets/ble_connection_widget.dart';
-
-class NavigationStep {
-  final String instruction;
-  final LatLng location;
-  final String maneuver; // e.g., "turn-left", "turn-right", "straight"
-
-  NavigationStep({
-    required this.instruction,
-    required this.location,
-    required this.maneuver,
-  });
-}
 
 class RoutePage extends StatefulWidget {
   const RoutePage({super.key});
@@ -38,6 +25,8 @@ class _RoutePageState extends State<RoutePage> {
   List<NavigationStep> _navigationSteps = [];
 
   final BLEService _bleService = BLEService();
+
+  final RouteService _routeService = RouteService();
 
   StreamSubscription<Position>? _positionStream;
 
@@ -64,20 +53,6 @@ class _RoutePageState extends State<RoutePage> {
     _positionStream?.cancel();
     _commandTimer?.cancel();
     super.dispose();
-  }
-
-  Future<LatLng?> _geocode(String address) async {
-    final url =
-        'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=AIzaSyCP7Hb7dvscejg9VlO2tTrmN5E8S3vlJx0';
-
-    final response = await http.get(Uri.parse(url));
-    final data = jsonDecode(response.body);
-
-    if (data['status'] == 'OK') {
-      final loc = data['results'][0]['geometry']['location'];
-      return LatLng(loc['lat'], loc['lng']);
-    }
-    return null;
   }
 
   Future<void> _startLiveTracking() async {
@@ -135,7 +110,7 @@ class _RoutePageState extends State<RoutePage> {
     String commandToSend;
 
     // 1. Find the maneuver for the UPCOMING intersection (which is the next step's maneuver)
-    String upcomingManeuver = 'straight';
+    String upcomingManeuver;
     if (_currentStepIndex + 1 < _navigationSteps.length) {
       upcomingManeuver = _navigationSteps[_currentStepIndex + 1].maneuver;
     } else {
@@ -224,7 +199,7 @@ class _RoutePageState extends State<RoutePage> {
 
     final currentPosition = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
     final startLatLng = LatLng(currentPosition.latitude, currentPosition.longitude);
-    final endLatLng = await _geocode(end);
+    final endLatLng = await _routeService.geocode(end);
 
     if (endLatLng == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -233,48 +208,16 @@ class _RoutePageState extends State<RoutePage> {
       return;
     }
 
-    final url =
-        'https://maps.googleapis.com/maps/api/directions/json'
-        '?origin=${startLatLng.latitude},${startLatLng.longitude}'
-        '&destination=${endLatLng.latitude},${endLatLng.longitude}'
-        '&mode=walking'
-        '&key=AIzaSyCP7Hb7dvscejg9VlO2tTrmN5E8S3vlJx0';
+    final routeDetails = await _routeService.getRoute(startLatLng, endLatLng);
 
-    final response = await http.get(Uri.parse(url));
-    final data = jsonDecode(response.body);
-
-    if (data['status'] != 'OK' ||
-        data['routes'] == null ||
-        data['routes'].isEmpty) {
+    if (routeDetails == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Directions failed: ${data['status']}")),
+        const SnackBar(content: Text("Could not get directions")),
       );
       return;
     }
 
-    final encoded = data['routes'][0]['overview_polyline']['points'];
-    final routePoints = _decodePolyline(encoded);
-
-    final route = data['routes'][0]['legs'][0];
-    final steps = route['steps'];
-
-    // Clear previous route data
-    _navigationSteps = [];
-
-    for (var step in steps) {
-      final instruction =
-          step['html_instructions'].replaceAll(RegExp(r'<[^>]*>'), '');
-
-      final location = step['end_location'];
-      final maneuver =
-          step['maneuver'] ?? 'straight'; // Default to 'straight' if no maneuver
-
-      _navigationSteps.add(NavigationStep(
-        instruction: instruction,
-        location: LatLng(location['lat'], location['lng']),
-        maneuver: maneuver,
-      ));
-    }
+    _navigationSteps = routeDetails.navigationSteps;
 
     setState(() {
       _markers.clear();
@@ -297,7 +240,7 @@ class _RoutePageState extends State<RoutePage> {
 
       _polylines.add(Polyline(
         polylineId: const PolylineId("route"),
-        points: routePoints,
+        points: routeDetails.polylinePoints,
         width: 5,
         color: Colors.blue,
       ));
@@ -308,38 +251,6 @@ class _RoutePageState extends State<RoutePage> {
     );
 
     _startLiveTracking();
-  }
-
-  List<LatLng> _decodePolyline(String encoded) {
-    List<LatLng> points = [];
-    int index = 0, lat = 0, lng = 0;
-
-    while (index < encoded.length) {
-      int b, shift = 0, result = 0;
-
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1F) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      lat += ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-
-      shift = 0;
-      result = 0;
-
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1F) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      lng += ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-
-      points.add(LatLng(lat / 1e5, lng / 1e5));
-    }
-
-    return points;
   }
 
   @override
