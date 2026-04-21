@@ -80,6 +80,9 @@ class BLEService {
       }
 
       connectionStatusNotifier.value = "Connected";
+
+      _sendConnectionPulses();
+
       return true;
     } catch (e) {
       print("Connection Error: $e");
@@ -96,6 +99,13 @@ class BLEService {
         _txCharacteristic = null;
       }
     });
+  }
+
+  Future<void> _sendConnectionPulses() async {
+    for (int i = 0; i < 3; i++) {
+      await sendCommand("a75");
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
   }
 
   // --- 3. COMMUNICATION ---
