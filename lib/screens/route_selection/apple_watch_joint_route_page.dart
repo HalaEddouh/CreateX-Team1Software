@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import '../../services/ble_service.dart';
 import '../../services/route_service.dart';
 import 'package:flutter/material.dart';
@@ -7,14 +8,16 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../widgets/ble_connection_widget.dart';
 
-class RoutePage extends StatefulWidget {
-  const RoutePage({super.key});
+class AppleWatchJointRoutePage extends StatefulWidget {
+  const AppleWatchJointRoutePage({super.key});
 
   @override
-  State<RoutePage> createState() => _RoutePageState();
+  State<AppleWatchJointRoutePage> createState() => _AppleWatchJointRoutePageState();
 }
 
-class _RoutePageState extends State<RoutePage> {
+class _AppleWatchJointRoutePageState extends State<AppleWatchJointRoutePage> {
+  static const platform = MethodChannel('com.example.haptic_running/watch');
+
   GoogleMapController? _controller;
 
   final TextEditingController _endController = TextEditingController();
@@ -25,23 +28,17 @@ class _RoutePageState extends State<RoutePage> {
   List<NavigationStep> _navigationSteps = [];
 
   final BLEService _bleService = BLEService();
-
   final RouteService _routeService = RouteService();
 
   StreamSubscription<Position>? _positionStream;
 
-  LatLng? _currentLocation;
-
   int _currentStepIndex = 0;
-
   String _nextInstruction = "";
-
   String _activeCommand = "";
-
+  String _upcomingManeuver = "";
   int distanceToStep = 0;
 
   Timer? _commandTimer;
-
   bool _isCommandSent = false;
 
   static const CameraPosition _initialPosition =
@@ -122,18 +119,14 @@ class _RoutePageState extends State<RoutePage> {
 
     distanceToStep = distance.toInt();
 
-    // Debug prints to reveal the coordinate mismatch
-    print("Device Location: ${userLocation.latitude}, ${userLocation.longitude}");
-    print("Route Target: ${targetLocation.latitude}, ${targetLocation.longitude}");
-
     String commandToSend;
 
-    // 1. Find the maneuver for the UPCOMING intersection (which is the next step's maneuver)
-    String upcomingManeuver;
+    // 1. Find the maneuver for the UPCOMING intersection
+    String tempManeuver;
     if (_currentStepIndex + 1 < _navigationSteps.length) {
-      upcomingManeuver = _navigationSteps[_currentStepIndex + 1].maneuver;
+      tempManeuver = _navigationSteps[_currentStepIndex + 1].maneuver;
     } else {
-      upcomingManeuver = 'arrived';
+      tempManeuver = 'arrived';
     }
 
     // Determine command based on maneuver and distance
@@ -141,7 +134,7 @@ class _RoutePageState extends State<RoutePage> {
       // Closest
       commandToSend = 'a127';
     } else if (distance < 25) {
-      // Closesr
+      // Closer
       commandToSend = 'a30';
     } else if (distance < 50) {
       // Approaching
@@ -152,12 +145,11 @@ class _RoutePageState extends State<RoutePage> {
 
     setState(() {
       _activeCommand = commandToSend;
+      _upcomingManeuver = tempManeuver;
     });
-
 
     // Logic to advance to the next step
     if (distance < 15) {
-      // Threshold to move to next instruction (must be less than the 25m threshold above)
       _currentStepIndex++;
       if (_currentStepIndex < _navigationSteps.length) {
         setState(() {
@@ -178,10 +170,55 @@ class _RoutePageState extends State<RoutePage> {
   }
 
   Future<void> _sendCommand() async {
-        // Send the command via BLE
-    if (_activeCommand.isNotEmpty && _bleService.isConnected) {
-      _bleService.sendCommand(_activeCommand);
-      
+    if (_activeCommand.isEmpty || _activeCommand == '0') return;
+
+    bool isLeft = _upcomingManeuver.toLowerCase().contains('left') == true;
+    bool isRight = _upcomingManeuver.toLowerCase().contains('right') == true;
+
+    // Translate BLE pulse commands to Apple Watch haptic equivalents
+    String watchCommand = 'alert';
+    if (_activeCommand == 'a127') {
+       if (isLeft) watchCommand = 'turn-left';
+       else if (isRight) watchCommand = 'turn-right';
+       else watchCommand = 'arrived';
+    } else if (_activeCommand == 'a30') {
+       watchCommand = 'closer';
+    } else if (_activeCommand == 'a10') {
+       watchCommand = 'approaching';
+    }
+
+    bool sentSomething = false;
+
+    // Routing logic based on directionality
+    if (isRight) {
+      // Right turns -> Send ONLY to BLE Haptic Device
+      if (_bleService.isConnected) {
+        _bleService.sendCommand(_activeCommand);
+        sentSomething = true;
+      }
+    } else if (isLeft) {
+      // Left turns -> Send ONLY to Apple Watch
+      try {
+        await platform.invokeMethod('sendHaptic', {'command': watchCommand});
+        sentSomething = true;
+      } catch (e) {
+        print("Watch Error: $e");
+      }
+    } else {
+      // No directionality (e.g. straight, arriving) -> Send to BOTH
+      if (_bleService.isConnected) {
+        _bleService.sendCommand(_activeCommand);
+        sentSomething = true;
+      }
+      try {
+        await platform.invokeMethod('sendHaptic', {'command': watchCommand});
+        sentSomething = true;
+      } catch (e) {
+        print("Watch Error: $e");
+      }
+    }
+
+    if (sentSomething) {
       setState(() {
         _isCommandSent = true;
       });
@@ -250,6 +287,10 @@ class _RoutePageState extends State<RoutePage> {
       _nextInstruction = _navigationSteps.length > 1
           ? "Next: ${_navigationSteps[1].instruction}"
           : (_navigationSteps.isNotEmpty ? _navigationSteps[0].instruction : "");
+      
+      _upcomingManeuver = _navigationSteps.length > 1
+          ? _navigationSteps[1].maneuver
+          : (_navigationSteps.isNotEmpty ? _navigationSteps[0].maneuver : "");
 
       _markers.add(Marker(
         markerId: const MarkerId("start"),
@@ -279,8 +320,7 @@ class _RoutePageState extends State<RoutePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Route Planner")),
-
+      appBar: AppBar(title: const Text("Joint Navigation")),
       body: Column(
         children: [
           const Padding(
@@ -333,10 +373,11 @@ class _RoutePageState extends State<RoutePage> {
                   myLocationEnabled: _hasLocationPermission,
                   myLocationButtonEnabled: _hasLocationPermission,
                 ),
-                // 🛠 BLE COMMAND DEBUG WIDGET
+                // 🛠 DEBUG WIDGET
                 Positioned(
                   bottom: 16,
                   left: 16,
+                  right: 16, // Constrains the right side to prevent horizontal UI overflows
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
@@ -345,16 +386,18 @@ class _RoutePageState extends State<RoutePage> {
                       boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
                     ),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.bluetooth_audio, size: 18, color: Colors.white),
+                        const Icon(Icons.compare_arrows, size: 18, color: Colors.white),
                         const SizedBox(width: 8),
-                        Text(
-                          "BLE Command: ${_activeCommand.isEmpty ? 'None' : _activeCommand} | Distance: ${distanceToStep}m",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                        Expanded( // Wraps the text to automatically truncate it if it's too long
+                          child: Text(
+                            "Dir: ${_upcomingManeuver.isEmpty ? 'None' : _upcomingManeuver} | Dist: ${distanceToStep}m",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),
