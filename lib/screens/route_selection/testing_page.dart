@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/ble_service.dart';
 import '../../widgets/ble_connection_widget.dart';
 
@@ -11,6 +12,33 @@ class TestingPage extends StatefulWidget {
 
 class _TestingPageState extends State<TestingPage> {
   final BLEService _bleService = BLEService();
+
+  static const platform = MethodChannel('com.example.hapticRunning/watch');
+
+  final List<String> _hapticCommands = [
+    'notification',
+    'directionUp',
+    'directionDown',
+    'success',
+    'failure',
+    'retry',
+    'start',
+    'stop',
+    'click'
+  ];
+
+  Future<void> _sendWatchCommand(String command) async {
+    try {
+      final String result = await platform.invokeMethod('sendHaptic', {'command': command});
+      if (mounted && result != 'Command queued for when watch wakes up') {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    }
+  }
 
   void _sendCommand(String command) {
     if (_bleService.isConnected) {
@@ -34,7 +62,7 @@ class _TestingPageState extends State<TestingPage> {
       appBar: AppBar(
         title: const Text('BLE Pulse Tester'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -61,6 +89,32 @@ class _TestingPageState extends State<TestingPage> {
               onPressed: () => _sendCommand('a127'),
               child: const Text('Send "a127" (High)'),
             ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _sendCommand('sweep'),
+              child: const Text('Send "sweep"'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _sendCommand('stop'),
+              child: const Text('Send "stop" (0)'),
+            ),
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 16),
+            const Text(
+              'Apple Watch Haptics',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ..._hapticCommands.map<Widget>((command) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: ElevatedButton(
+                    onPressed: () => _sendWatchCommand(command),
+                    child: Text('Send "$command"'),
+                  ),
+                )).toList(),
           ],
         ),
       ),

@@ -9,12 +9,12 @@ class AppleWatchPage extends StatefulWidget {
 }
 
 class _AppleWatchPageState extends State<AppleWatchPage> {
-  static const platform = MethodChannel('com.example.haptic_running/watch');
+  static const platform = MethodChannel('com.example.hapticRunning/watch');
 
   Future<void> _sendCommand(String command) async {
     try {
       final String result = await platform.invokeMethod('sendHaptic', {'command': command});
-      if (mounted) {
+      if (mounted && result != 'Command queued for when watch wakes up') {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
       }
     } catch (e) {
@@ -25,10 +25,6 @@ class _AppleWatchPageState extends State<AppleWatchPage> {
   }
 
   final List<String> _hapticCommands = [
-    'turn-left',
-    'turn-right',
-    'approaching',
-    'arrived',
     'notification',
     'directionUp',
     'directionDown',
@@ -37,10 +33,7 @@ class _AppleWatchPageState extends State<AppleWatchPage> {
     'retry',
     'start',
     'stop',
-    'click',
-    'navigationGenericManeuver',
-    'navigationLeftTurn',
-    'navigationRightTurn',
+    'click'
   ];
 
   @override
