@@ -23,12 +23,9 @@ class _RoutePageState extends State<RoutePage> {
 
   List<String> _directions = [];
 
-  StreamSubscription<Position>? _positionStream;
-
-  LatLng? _currentLocation;
+  bool _isLoading = false;
 
   int _currentStepIndex = 0;
-
   String _nextInstruction = "";
 
   static const CameraPosition _initialPosition =
@@ -38,13 +35,15 @@ class _RoutePageState extends State<RoutePage> {
   void dispose() {
     _startController.dispose();
     _endController.dispose();
-    _positionStream?.cancel();
     super.dispose();
   }
 
   Future<LatLng?> _geocode(String address) async {
+    const apiKey = "AIzaSyAuxdUnmsftr_-W8moT0bvN3GAoyOvbauI";
+
     final url =
-        'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=AIzaSyCP7Hb7dvscejg9VlO2tTrmN5E8S3vlJx0';
+        'https://maps.googleapis.com/maps/api/geocode/json'
+        '?address=${Uri.encodeComponent(address)}&key=$apiKey';
 
     final response = await http.get(Uri.parse(url));
     final data = jsonDecode(response.body);
@@ -56,149 +55,91 @@ class _RoutePageState extends State<RoutePage> {
     return null;
   }
 
-  Future<void> _startLiveTracking() async {
-    LocationPermission permission = await Geolocator.requestPermission();
-
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      return;
-    }
-
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen((Position pos) {
-      final newPos = LatLng(pos.latitude, pos.longitude);
-
-      setState(() {
-        _currentLocation = newPos;
-      });
-
-      _checkStepProgress(newPos);
-
-      _controller?.animateCamera(
-        CameraUpdate.newLatLng(newPos),
-      );
-    });
-  }
-
-  void _checkStepProgress(LatLng userLocation) {
-    if (_directions.isEmpty) return;
-
-    final routePoints = _polylines.isNotEmpty
-        ? _polylines.first.points
-        : <LatLng>[];
-
-    if (_currentStepIndex >= routePoints.length) return;
-
-    final target = routePoints[_currentStepIndex];
-
-    final distance = Geolocator.distanceBetween(
-      userLocation.latitude,
-      userLocation.longitude,
-      target.latitude,
-      target.longitude,
-    );
-
-    if (distance < 15) {
-      _currentStepIndex++;
-
-      if (_currentStepIndex < _directions.length) {
-        setState(() {
-          _nextInstruction = _directions[_currentStepIndex];
-        });
-      } else {
-        setState(() {
-          _nextInstruction = "You have arrived 🎉";
-        });
-      }
-    }
-  }
-
   Future<void> _getRoute() async {
-    final start = _startController.text;
-    final end = _endController.text;
+    final start = _startController.text.trim();
+    final end = _endController.text.trim();
 
     if (start.isEmpty || end.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Enter both locations")),
+        const SnackBar(content: Text("Enter both start and destination")),
       );
       return;
     }
 
-    final startLatLng = await _geocode(start);
-    final endLatLng = await _geocode(end);
+    setState(() => _isLoading = true);
 
-    if (startLatLng == null || endLatLng == null) {
+    try {
+      final startLatLng = await _geocode(start);
+      final endLatLng = await _geocode(end);
+
+      if (startLatLng == null || endLatLng == null) {
+        throw Exception("Could not find locations");
+      }
+
+      const apiKey = "AIzaSyAuxdUnmsftr_-W8moT0bvN3GAoyOvbauI";
+
+      final url =
+          'https://maps.googleapis.com/maps/api/directions/json'
+          '?origin=${startLatLng.latitude},${startLatLng.longitude}'
+          '&destination=${endLatLng.latitude},${endLatLng.longitude}'
+          '&mode=walking'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+      final data = jsonDecode(response.body);
+
+      if (data['status'] != 'OK') {
+        throw Exception("Google API error: ${data['status']}");
+      }
+
+      // ✅ FIXED TYPE SAFETY HERE
+      final List steps =
+          data['routes'][0]['legs'][0]['steps'] as List;
+
+      _directions = steps.map<String>((step) {
+        final map = step as Map<String, dynamic>;
+        final instruction = map['html_instructions'] as String;
+        return instruction.replaceAll(RegExp(r'<[^>]*>'), '');
+      }).toList();
+
+      final encoded = data['routes'][0]['overview_polyline']['points'];
+      final routePoints = _decodePolyline(encoded);
+
+      setState(() {
+        _markers.clear();
+        _polylines.clear();
+        _currentStepIndex = 0;
+        _nextInstruction =
+            _directions.isNotEmpty ? _directions[0] : "";
+
+        _markers.add(Marker(
+          markerId: const MarkerId("start"),
+          position: startLatLng,
+        ));
+
+        _markers.add(Marker(
+          markerId: const MarkerId("end"),
+          position: endLatLng,
+        ));
+
+        _polylines.add(Polyline(
+          polylineId: const PolylineId("route"),
+          points: routePoints,
+          width: 6,
+          color: const Color(0xFF2563EB),
+        ));
+      });
+
+      _controller?.animateCamera(
+        CameraUpdate.newLatLngZoom(startLatLng, 14),
+      );
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not find one of the locations")),
+        SnackBar(content: Text("Route failed: $e")),
       );
-      return;
+    } finally {
+      setState(() => _isLoading = false);
     }
-
-    final url =
-        'https://maps.googleapis.com/maps/api/directions/json'
-        '?origin=${startLatLng.latitude},${startLatLng.longitude}'
-        '&destination=${endLatLng.latitude},${endLatLng.longitude}'
-        '&mode=walking'
-        '&key=AIzaSyCP7Hb7dvscejg9VlO2tTrmN5E8S3vlJx0';
-
-    final response = await http.get(Uri.parse(url));
-    final data = jsonDecode(response.body);
-
-    if (data['status'] != 'OK' ||
-        data['routes'] == null ||
-        data['routes'].isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Directions failed: ${data['status']}")),
-      );
-      return;
-    }
-
-    final encoded = data['routes'][0]['overview_polyline']['points'];
-    final routePoints = _decodePolyline(encoded);
-
-    final steps = data['routes'][0]['legs'][0]['steps'];
-    _directions = [];
-
-    for (var step in steps) {
-      final instruction = step['html_instructions']
-          .replaceAll(RegExp(r'<[^>]*>'), '');
-      final distance = step['distance']['text'];
-      _directions.add("$instruction ($distance)");
-    }
-
-    setState(() {
-      _markers.clear();
-      _polylines.clear();
-      _currentStepIndex = 0;
-      _nextInstruction = _directions.isNotEmpty ? _directions[0] : "";
-
-      _markers.add(Marker(
-        markerId: const MarkerId("start"),
-        position: startLatLng,
-      ));
-
-      _markers.add(Marker(
-        markerId: const MarkerId("end"),
-        position: endLatLng,
-      ));
-
-      _polylines.add(Polyline(
-        polylineId: const PolylineId("route"),
-        points: routePoints,
-        width: 5,
-        color: Colors.blue,
-      ));
-    });
-
-    _controller?.animateCamera(
-      CameraUpdate.newLatLngZoom(startLatLng, 14),
-    );
-
-    _startLiveTracking();
   }
 
   List<LatLng> _decodePolyline(String encoded) {
@@ -236,77 +177,90 @@ class _RoutePageState extends State<RoutePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Route Planner")),
+      backgroundColor: const Color(0xFFF6F7FB),
 
-      body: Column(
+      appBar: AppBar(
+        title: const Text("Route Planner"),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+      ),
+
+      body: Stack(
         children: [
-          // 🔔 LIVE INSTRUCTION BAR
-          if (_nextInstruction.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              color: Colors.black87,
-              child: Text(
-                _nextInstruction,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+          GoogleMap(
+            initialCameraPosition: _initialPosition,
+            onMapCreated: (c) => _controller = c,
+            markers: _markers,
+            polylines: _polylines,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: true,
+          ),
+
+          Positioned(
+            top: 20,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _startController,
+                    decoration: const InputDecoration(
+                      hintText: "Start location",
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _endController,
+                    decoration: const InputDecoration(
+                      hintText: "Destination",
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _getRoute,
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text("Navigate"),
+                    ),
+                  ),
+                ],
               ),
             ),
-
-          // INPUT
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _startController,
-                  decoration: const InputDecoration(
-                    labelText: "Start Location",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _endController,
-                  decoration: const InputDecoration(
-                    labelText: "End Location",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _getRoute,
-                  child: const Text("Get Walking Route"),
-                ),
-              ],
-            ),
           ),
 
-          // MAP
-          Expanded(
-            flex: 3,
-            child: GoogleMap(
-              initialCameraPosition: _initialPosition,
-              onMapCreated: (c) => _controller = c,
-              markers: _markers,
-              polylines: _polylines,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
+          if (_nextInstruction.isNotEmpty)
+            Positioned(
+              bottom: 100,
+              left: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _nextInstruction,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
             ),
-          ),
-
-          // DIRECTIONS LIST
-          Expanded(
-            flex: 2,
-            child: ListView.builder(
-              itemCount: _directions.length,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  leading: Text("${index + 1}"),
-                  title: Text(_directions[index]),
-                );
-              },
-            ),
-          ),
         ],
       ),
     );
