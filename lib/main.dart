@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'screens/route_selection/route_page.dart';
 import 'screens/ble_debug_console/ble_debug_page.dart';
+import 'screens/apple_watch/apple_watch_page.dart';
+import 'screens/route_selection/testing_page.dart';
 import 'services/navigationService.dart';
+import 'screens/route_selection/apple_watch_joint_route_page.dart';
 
 final NavigationService navigationService = NavigationService();
 
@@ -87,6 +90,8 @@ class MyApp extends StatelessWidget {
         '/': (context) => const HomePage(),
         '/ble': (context) => const DebugPage(),
         '/navigation': (context) => const RoutePage(),
+        '/apple-watch': (context) => const AppleWatchPage(),
+        '/joint-navigation': (context) => const AppleWatchJointRoutePage(),
       },
     );
   }
@@ -125,6 +130,47 @@ class HomePage extends StatelessWidget {
                     Navigator.pushNamed(context, '/navigation');
                   },
                   child: const Text("Start Navigation"),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const TestingPage(),
+                      ),
+                    );
+                  },
+                  child: const Text("Maze Navigation Page"),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/apple-watch');
+                  },
+                  child: const Text("Connect to Apple Watch"),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/joint-navigation');
+                  },
+                  child: const Text("Apple Watch Joint Navigation"),
                 ),
               ),
             ],

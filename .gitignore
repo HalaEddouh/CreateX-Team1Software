@@ -1,45 +1,60 @@
-# Miscellaneous
-*.class
+# General
+.DS_Store
 *.log
 *.pyc
 *.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
 .svn/
-.swiftpm/
-migrate_working_dir/
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Flutter
+build/
 .dart_tool/
+.packages
 .flutter-plugins
 .flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
 
-# Symbolication related
-app.*.symbols
+# IDE-specific
+.idea/
+.vscode/
 
-# Obfuscation related
-app.*.map.json
+# iOS/macOS
+ios/build/
+macos/build/
+ios/Pods/
+macos/Pods/
+ios/Flutter/App.framework
+ios/Flutter/engine
+ios/Flutter/flutter_assets/
+ios/Flutter/.symlinks/
+macos/Flutter/ephemeral/
+*.xcworkspace
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# Android
+android/build/
+android/.gradle/
+android/app/build/
+*.apk
+*.aab
+
+# Linux
+linux/build/
+
+# Windows
+windows/build/
+
+# Web
+web/build/
+
+# Pub
+# It is recommended to commit pubspec.lock to version control.
+# For more information, see https://flutter.dev/to/pubspec-lock-file
+#
+# pubspec.lock
+
+# Podfile.lock
+# We recommend committing this file to version control.
+# For more information, see https://flutter.dev/to/podfile-lock
+#
+# /ios/Podfile.lock
+# /macos/Podfile.lock
