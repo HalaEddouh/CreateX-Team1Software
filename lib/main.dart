@@ -43,7 +43,6 @@ class MyApp extends StatelessWidget {
           ),
         ),
 
-        // 🔘 Buttons (all ElevatedButtons across app)
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF2563EB),
@@ -60,14 +59,12 @@ class MyApp extends StatelessWidget {
           ),
         ),
 
-        // 🔤 Text buttons
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
             foregroundColor: const Color(0xFF2563EB),
           ),
         ),
 
-        // 📝 Inputs (TextFields everywhere)
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
