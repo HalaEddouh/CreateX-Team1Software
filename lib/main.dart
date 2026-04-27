@@ -19,14 +19,71 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'BLE Navigation App',
+      debugShowCheckedModeBanner: false,
+
       theme: ThemeData(
-        primarySwatch: Colors.blue,
         useMaterial3: true,
+
+        // 🎨 Global color system
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2563EB), // modern blue
+          brightness: Brightness.light,
+        ),
+
+        // 🌫 App background
+        scaffoldBackgroundColor: const Color(0xFFF6F7FB),
+
+        // 🧭 AppBar styling
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          surfaceTintColor: Colors.transparent,
+          titleTextStyle: TextStyle(
+            color: Colors.black,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2563EB),
+            foregroundColor: Colors.white,
+            elevation: 2,
+            shadowColor: Colors.blueAccent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            padding: const EdgeInsets.symmetric(
+              vertical: 14,
+              horizontal: 16,
+            ),
+          ),
+        ),
+
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF2563EB),
+          ),
+        ),
+
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 14,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+        ),
       ),
 
       navigatorKey: navigationService.navKey,
 
-      // start here
       initialRoute: '/',
 
       routes: {
@@ -49,52 +106,75 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(title: const Text("Home")),
 
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              child: const Text("Go to BLE Debug"),
-              onPressed: () {
-                Navigator.pushNamed(context, '/ble');
-              },
-            ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/ble');
+                  },
+                  child: const Text("BLE Debug Console"),
+                ),
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            ElevatedButton(
-              child: const Text("Start Navigation"),
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const RoutePage()),
-                );              },
-            ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/navigation');
+                  },
+                  child: const Text("Start Navigation"),
+                ),
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            ElevatedButton(
-              child: const Text("Maze Navigation Page"),
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const TestingPage()),
-                );              },
-            ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const TestingPage(),
+                      ),
+                    );
+                  },
+                  child: const Text("Maze Navigation Page"),
+                ),
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            ElevatedButton(
-              child: const Text("Connect to Apple Watch"),
-              onPressed: () {
-                Navigator.pushNamed(context, '/apple-watch');
-              },
-            ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/apple-watch');
+                  },
+                  child: const Text("Connect to Apple Watch"),
+                ),
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            ElevatedButton(
-              child: const Text("Apple Watch Joint Navigation"),
-              onPressed: () {
-                Navigator.pushNamed(context, '/joint-navigation');
-              },
-            ),
-          ],
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/joint-navigation');
+                  },
+                  child: const Text("Apple Watch Joint Navigation"),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
